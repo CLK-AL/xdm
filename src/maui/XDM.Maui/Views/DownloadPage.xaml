@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- DownloadPage.xaml - Converted from WPF DownloadProgressWindow.xaml (450x280) -->
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:XDM.Maui.ViewModels"
+             x:Class="XDM.Maui.Views.DownloadPage"
+             x:DataType="vm:DownloadViewModel"
+             Title="Downloading...">
+    <VerticalStackLayout Padding="20" Spacing="12">
+        <Label Text="{Binding FileName}" FontSize="18" FontAttributes="Bold" LineBreakMode="TailTruncation" />
+        <Label Text="{Binding StatusText}" />
+        <ProgressBar Progress="{Binding Progress, Converter={StaticResource IntToDoubleConverter}}" />
+        <Grid ColumnDefinitions="*,*">
+            <Label Text="{Binding SpeedText, StringFormat='Speed: {0}'}" />
+            <Label Grid.Column="1" Text="{Binding EtaText, StringFormat='ETA: {0}'}" HorizontalOptions="End" />
+        </Grid>
+        <HorizontalStackLayout HorizontalOptions="End" Spacing="8">
+            <Button Text="Hide" Command="{Binding HideCommand}" />
+            <Button Text="Stop" Command="{Binding StopCommand}" />
+        </HorizontalStackLayout>
+    </VerticalStackLayout>
+</ContentPage>

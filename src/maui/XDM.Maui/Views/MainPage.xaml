@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:XDM.Maui.ViewModels"
+             x:Class="XDM.Maui.Views.MainPage"
+             x:DataType="vm:MainViewModel"
+             Title="Downloads">
+
+    <Grid RowDefinitions="Auto,*,Auto" Padding="10">
+
+        <!-- Toolbar -->
+        <HorizontalStackLayout Grid.Row="0" Spacing="10" Padding="0,0,0,10">
+            <Button Text="Add URL"
+                    Command="{Binding AddDownloadCommand}"
+                    BackgroundColor="{StaticResource Primary}" />
+            <Button Text="Stop All"
+                    Command="{Binding StopAllCommand}" />
+        </HorizontalStackLayout>
+
+        <!-- Download List -->
+        <RefreshView Grid.Row="1"
+                     IsRefreshing="{Binding IsRefreshing}"
+                     Command="{Binding RefreshCommand}">
+            <CollectionView ItemsSource="{Binding Downloads}"
+                            SelectedItem="{Binding SelectedDownload}"
+                            SelectionMode="Single">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:DownloadItemViewModel">
+                        <SwipeView>
+                            <SwipeView.RightItems>
+                                <SwipeItems>
+                                    <SwipeItem Text="Delete"
+                                               BackgroundColor="Red"
+                                               Command="{Binding Source={RelativeSource AncestorType={x:Type vm:MainViewModel}}, Path=DeleteDownloadCommand}"
+                                               CommandParameter="{Binding Id}" />
+                                </SwipeItems>
+                            </SwipeView.RightItems>
+
+                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto"
+                                  Padding="10" Margin="0,2">
+                                <Label Grid.Row="0" Grid.Column="0"
+                                       Text="{Binding FileName}"
+                                       FontAttributes="Bold"
+                                       FontSize="16" />
+                                <Label Grid.Row="0" Grid.Column="1"
+                                       Text="{Binding StatusText}"
+                                       FontSize="12"
+                                       TextColor="Gray" />
+                                <ProgressBar Grid.Row="1" Grid.ColumnSpan="2"
+                                             Progress="{Binding Progress, Converter={StaticResource PercentToDoubleConverter}}"
+                                             ProgressColor="{StaticResource Primary}" />
+                                <Label Grid.Row="2" Grid.Column="0"
+                                       Text="{Binding SizeText}"
+                                       FontSize="12"
+                                       TextColor="Gray" />
+                            </Grid>
+                        </SwipeView>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+
+                <CollectionView.EmptyView>
+                    <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center">
+                        <Label Text="No downloads yet"
+                               FontSize="18"
+                               TextColor="Gray"
+                               HorizontalOptions="Center" />
+                        <Label Text="Tap 'Add URL' to start downloading"
+                               FontSize="14"
+                               TextColor="LightGray"
+                               HorizontalOptions="Center" />
+                    </VerticalStackLayout>
+                </CollectionView.EmptyView>
+            </CollectionView>
+        </RefreshView>
+
+    </Grid>
+</ContentPage>
