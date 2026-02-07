@@ -38,12 +38,65 @@ XDM seamlessly integrates with Google Chrome, Mozilla Firefox Quantum, Opera, Vi
 - Resumes broken / dead downloads caused by connection problem, power failure or session expiration.
 - Works with Windows ISA, auto proxy scripts, proxy servers, NTLM, Kerberos authentication.
 
+## Repository Structure
+
+```
+src/
+├── java/      → Original Java source (Swing UI, ~194 files, JDK 11)
+├── kmp/       → Kotlin Multiplatform conversion (Compose UI, GraalVM native)
+│   ├── core/       → Shared download engine (commonMain)
+│   ├── ui/         → Compose Multiplatform UI
+│   ├── compose-app/→ Desktop entry point + GraalVM native-image
+│   └── app/        → CLI entry point
+├── maui/      → C# MAUI conversion (XAML UI, .NET Native AOT)
+│   └── XDM.Maui/   → Cross-platform MAUI app
+├── py/        → Python dependencies
+│   └── yt-dlp/     → Video extraction tool (upstream: yt-dlp/yt-dlp)
+app/
+├── XDM/
+│   ├── XDM.Core/    → C# download engine (reused by MAUI)
+│   ├── XDM.Wpf.UI/  → WPF UI (Windows)
+│   └── XDM.Gtk.UI/  → GTK3 UI (Linux)
+```
+
+See [COMPARISON.md](COMPARISON.md) for a detailed side-by-side tech comparison across all implementations.
+
+## Redacted Files
+
+Some upstream dependency files contain hardcoded API keys that trigger GitHub push protection.
+These have been redacted locally. To restore them from upstream for local use:
+
+```bash
+./restore-redacted.sh
+```
+
+Currently restores:
+- `src/py/yt-dlp/yt_dlp/extractor/shahid.py` — AWS API keys for the Shahid.net extractor
+
+Do not commit restored files back — they are for local/runtime use only.
+
 ## Building from source
+
+### Java (original)
 <pre>
 This is a standard maven project.
 If you have configured Java and Maven use: <b>mvn clean install</b> to build the project.
 The jar will be created in target directory.
 </pre>
+
+### KMP + Compose (native via GraalVM)
+```bash
+cd src/kmp
+./gradlew :compose-app:run              # Run with JVM
+./gradlew :compose-app:nativeCompile    # Build native binary
+```
+
+### MAUI (native via .NET AOT)
+```bash
+cd src/maui/XDM.Maui
+dotnet build                                              # Build
+dotnet publish -c Release -r linux-x64 -p:PublishAot=true # Native AOT
+```
 
 ## Submitting translations
 If you want to translate XDM to your language, feel free to submit a translation file.<br>
