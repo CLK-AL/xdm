@@ -1,0 +1,329 @@
+@startuml media-processing
+!theme plain
+title Media Processing & Video Extraction — Class Comparison
+caption FFmpeg integration, yt-dlp wrapper, and video format handling
+
+skinparam nodesep 25
+skinparam ranksep 25
+skinparam note {
+  BackgroundColor #FFFFF0
+  BorderColor #999999
+}
+
+' ═══════════════════════════════════════════════════════════
+' JAVA MEDIA PROCESSING
+' ═══════════════════════════════════════════════════════════
+package "Java — xdman" #DAE8FC {
+
+  package "mediaconversion" as j_mc {
+    class "FFmpeg" as j_ff {
+      -process : Process
+      --
+      +convert(input, output, format)
+      +mux(video, audio, output)
+      +getProgress() : float
+      +cancel()
+    }
+
+    class "MediaFormats" as j_mf {
+      +getFormats() : List<MediaFormat>
+      +getFormat(name) : MediaFormat
+    }
+
+    class "MediaFormat" as j_fmt {
+      +name : String
+      +extension : String
+      +videoCodec : String
+      +audioCodec : String
+      +bitrate : int
+      +resolution : String
+    }
+
+    class "MediaInfoExtractor" as j_info {
+      +extractInfo(file) : MediaFormatInfo
+    }
+
+    interface "MediaConversionListener" as j_mcl {
+      +conversionStarted()
+      +conversionProgress(percent)
+      +conversionComplete()
+      +conversionFailed()
+    }
+
+    j_ff --> j_fmt : uses
+    j_ff ..> j_mcl : notifies
+    j_mf --> "*" j_fmt
+  }
+
+  package "videoparser" as j_vp {
+    class "YoutubeDLHandler" as j_ydl {
+      -ydlPath : String
+      --
+      +extractInfo(url) : YdlResponse
+      +getFormats(url) : List
+      -buildCommand(url) : String
+    }
+    note right of j_ydl
+      **⚠ Command injection risk**
+      URL, username, password
+      concatenated via StringBuilder
+      with no escaping.
+    end note
+
+    class "YdlResponse" as j_yr {
+      +title : String
+      +formats : List
+      +thumbnail : String
+      +duration : int
+    }
+
+    j_ydl --> j_yr : parses JSON output
+  }
+}
+
+' ═══════════════════════════════════════════════════════════
+' C# MEDIA PROCESSING
+' ═══════════════════════════════════════════════════════════
+package "C# — XDM.Core" #D5E8D4 {
+
+  package "Downloader" as c_mp {
+    abstract class "BaseMediaProcessor" as c_bmp {
+      +MergeAudioVideoStream()
+      +ConvertToMp3Audio()
+      +Cancel()
+    }
+
+    class "FFmpegMediaProcessor" as c_ffmp {
+      -process : Process
+      --
+      +MergeAudioVideStream(v, a, out)
+      +MergeHLSAudioVideStream(v, a, out)
+      +ConvertToMp3Audio(input, out)
+      +Cancel()
+      -ParseProgress(line) : float
+    }
+
+    class "MediaProcessingResult" as c_mpr {
+      +Success : bool
+      +OutputFile : string
+    }
+
+    c_bmp <|-- c_ffmp
+    c_ffmp ..> c_mpr : returns
+  }
+
+  package "YDLWrapper" as c_ydl {
+    class "YDLProcess" as c_yp {
+      +Uri : string
+      +UserName : string
+      +Password : string
+      +BrowserName : string
+      +JsonOutputFile : string
+      --
+      +Start()
+      +Cancel()
+      -BuildArguments() : string
+    }
+    note right of c_yp
+      **⚠ Command injection risk**
+      Properties interpolated directly
+      via StringBuilder.Append() with
+      no escaping. (See CODE_REVIEW #2)
+      Unlike FFmpegMediaProcessor which
+      uses ArgumentList.Add().
+    end note
+
+    class "YDLOutputParser" as c_yop {
+      +Parse(jsonFile) : VideoInfo
+    }
+
+    class "YtBinary" as c_ytb {
+      +FindYDLBinary() : YtBinaryInfo
+    }
+
+    enum "YtBinaryType" as c_ybt {
+      YoutubeDl
+      YtDlp
+    }
+
+    c_yp --> c_yop : output parsed by
+    c_ytb --> c_ybt
+  }
+
+  package "MediaParser" as c_mps {
+    class "HlsParser" as c_hlsp {
+      +{static} ParseMediaSegments() : HlsPlaylist
+    }
+    class "MpdParser" as c_mpdp {
+      +{static} Parse() : List<Representation>
+    }
+    class "YoutubeDataFormatParser" as c_ytfp {
+      +{static} Parse() : List<VideoFormatData>
+    }
+  }
+}
+
+' ═══════════════════════════════════════════════════════════
+' KOTLIN MEDIA PROCESSING
+' ═══════════════════════════════════════════════════════════
+package "Kotlin — xdm.media" #E1D5E7 {
+
+  class "FFmpegRunner" as k_ff {
+    --
+    +convert(input, output, format) : Flow<ConversionProgress>
+    +mergeAudioVideo(video, audio, out) : Flow<ConversionProgress>
+    -parseProgress(line) : ConversionProgress?
+    --
+    {static} +DEFAULT_FORMATS : List<ConversionFormat>
+  }
+
+  class "ConversionFormat" as k_cf <<data class>> {
+    +name : String
+    +extension : String
+    +videoCodec : String?
+    +audioCodec : String?
+    +extraArgs : List<String>
+  }
+
+  class "ConversionProgress" as k_cp <<data class>> {
+    +percent : Float
+    +timeProcessed : Duration
+    +speed : Float
+  }
+
+  class "YtDlpWrapper" as k_ydl {
+    --
+    +extractInfo(url, browser?, user?, pass?) : YtDlpResult
+    +isAvailable() : Boolean
+    -buildArgs(url, ...) : List<String>
+  }
+  note right of k_ydl
+    **Safe argument handling**
+    Arguments built as List<String>
+    (not concatenated strings).
+    No command injection possible.
+  end note
+
+  class "YtDlpResult" as k_yr <<@Serializable>> {
+    +title : String
+    +formats : List<YtDlpFormat>
+    +thumbnail : String?
+    +duration : Int?
+  }
+
+  class "YtDlpFormat" as k_yf <<@Serializable>> {
+    +format_id : String
+    +ext : String
+    +url : String
+    +width : Int?
+    +height : Int?
+    +vcodec : String?
+    +acodec : String?
+    +resolution : String
+    +hasVideo : Boolean
+    +hasAudio : Boolean
+  }
+
+  class "ProcessRunner" as k_pr {
+    «expect/actual»
+    +run(cmd, args) : ProcessResult
+  }
+
+  k_ff --> k_cf : uses formats
+  k_ff ..> k_cp : emits via Flow
+  k_ff --> k_pr : executes ffmpeg
+  k_ydl --> k_pr : executes yt-dlp
+  k_ydl --> k_yr : parses JSON
+  k_yr --> "*" k_yf
+}
+
+' ═══════════════════════════════════════════════════════════
+' PYTHON yt-dlp (THE TOOL ITSELF)
+' ═══════════════════════════════════════════════════════════
+package "Python — yt_dlp (the tool XDM calls)" #FFE6CC {
+
+  class "YoutubeDL" as p_ydl {
+    +params : dict
+    +_ies : dict «extractors»
+    +_pps : dict «post-processors»
+    --
+    +extract_info(url) : info_dict
+    +download(urls)
+    +process_info(info_dict)
+    +add_info_extractor(ie)
+    +add_post_processor(pp)
+  }
+
+  abstract class "InfoExtractor" as p_ie {
+    +_VALID_URL : regex
+    --
+    +suitable(url) : bool
+    +extract(url) : info_dict
+    #{abstract} _real_extract(url)
+  }
+
+  abstract class "PostProcessor" as p_pp {
+    +run(info_dict) : (status, info_dict)
+  }
+
+  class "FFmpegPostProcessor" as p_ffpp {
+    +run_ffmpeg(input, output, opts)
+    +probe(file) : info
+  }
+
+  class "FFmpegMergerPP" as p_merge
+  class "FFmpegExtractAudioPP" as p_audio
+  class "FFmpegVideoConvertorPP" as p_vconv
+  class "EmbedThumbnailPP" as p_thumb
+
+  p_ydl --> "*" p_ie : routes URL to
+  p_ydl --> "*" p_pp : chains post-process
+  p_pp <|-- p_ffpp
+  p_ffpp <|-- p_merge
+  p_ffpp <|-- p_audio
+  p_ffpp <|-- p_vconv
+  p_pp <|-- p_thumb
+
+  note bottom of p_ydl
+    **yt-dlp is the upstream tool**
+    XDM (Java/C#/Kotlin) invokes yt-dlp
+    as a subprocess to extract video URLs
+    and format metadata. XDM then downloads
+    using its own multi-segment engine.
+
+    yt-dlp has its own downloaders and
+    FFmpeg post-processors for standalone use.
+    **1050+ extractors** for video sites.
+  end note
+}
+
+' ═══════════════════════════════════════════════════════════
+' FLOW DIAGRAM
+' ═══════════════════════════════════════════════════════════
+note as FLOW
+  **Video Download Flow (Java/C#/Kotlin):**
+  1. User pastes video URL
+  2. XDM calls yt-dlp subprocess: `yt-dlp -j <url>`
+  3. yt-dlp returns JSON with title, formats[], thumbnail
+  4. XDM presents format selection to user
+  5. User picks format (e.g. 1080p MP4)
+  6. XDM downloads video+audio with own engine (multi-segment)
+  7. XDM calls FFmpeg to merge/mux audio+video tracks
+  8. Final file written to download folder
+
+  **Process Execution Safety:**
+  Java: ProcessBuilder (string concat ⚠)
+  C#: Process.Start (string concat ⚠) / ArgumentList.Add ✓
+  Kotlin: ProcessRunner with List<String> args ✓
+  Python: subprocess with list args ✓
+end note
+
+legend bottom right
+  | Color | Implementation |
+  |<#DAE8FC>| Java |
+  |<#D5E8D4>| C# (.NET) |
+  |<#E1D5E7>| Kotlin (KMP) |
+  |<#FFE6CC>| Python (yt-dlp) |
+endlegend
+
+@enduml

@@ -1,0 +1,326 @@
+@startuml download-engine
+!theme plain
+title Download Engine — Class Comparison (Java vs C# vs Kotlin vs Python)
+caption Core download engine classes: segment management, splitting, merging, assembly
+
+skinparam nodesep 30
+skinparam ranksep 30
+skinparam note {
+  BackgroundColor #FFFFF0
+  BorderColor #999999
+}
+
+' ═══════════════════════════════════════════════════════════
+' JAVA DOWNLOAD ENGINE
+' ═══════════════════════════════════════════════════════════
+package "Java — xdman.downloaders" as jpkg #DAE8FC {
+
+  abstract class "Downloader" as j_dl {
+    #id : String
+    #folder : String
+    #state : int
+    #downloaded : long
+    #length : long
+    #speedLimit : int
+    --
+    +start()
+    +resume()
+    +stop()
+    +getProgress() : float
+    +getSpeed() : long
+    +getETA() : long
+    #onComplete()
+    #onFailed(errorCode)
+    #assembleAsync()
+    #assemble()
+  }
+
+  abstract class "SegmentDownloader" as j_seg {
+    #segments : Segment[]
+    #MAX_CHUNK_COUNT : int = 8
+    --
+    #createChunk(start, len)
+    #findMaxChunk() : Segment
+    #splitChunk(seg) : Segment
+    #mergeChunk(seg1, seg2)
+    #retryFailedChunks()
+    #saveState()
+    #restoreState()
+    +chunkInitiated(seg)
+    +chunkComplete(seg)
+    +chunkFailed(seg)
+    +chunkUpdated(seg)
+  }
+
+  interface "Segment" as j_iseg {
+    +getStartOffset() : long
+    +getLength() : long
+    +getDownloaded() : long
+    +getState() : int
+    +writeBytes(buf, off, len)
+    +stop()
+  }
+
+  class "SegmentImpl" as j_simpl {
+    -file : RandomAccessFile
+    -transferRate : long
+    --
+    +getOutStream()
+    +writeBytes()
+    +stop()
+    +dispose()
+  }
+
+  class "HttpDownloader" as j_http
+  class "FtpDownloader" as j_ftp
+  class "HlsDownloader" as j_hls
+  class "DashDownloader" as j_dash
+  class "HdsDownloader" as j_hds
+
+  j_dl <|-- j_seg
+  j_seg <|-- j_http
+  j_seg <|-- j_ftp
+  j_dl <|-- j_hls
+  j_dl <|-- j_dash
+  j_dl <|-- j_hds
+  j_iseg <|.. j_simpl
+  j_seg --> "*" j_iseg : manages
+
+  note bottom of j_seg
+    **Segment splitting algorithm:**
+    1. findMaxChunk() — largest active segment
+    2. splitChunk() — split at midpoint
+    3. New segment starts downloading
+    4. mergeChunk() — merge adjacent finished
+    State saved to text file (state.txt)
+  end note
+}
+
+' ═══════════════════════════════════════════════════════════
+' C# DOWNLOAD ENGINE
+' ═══════════════════════════════════════════════════════════
+package "C# — XDM.Core.Downloader" as cpkg #D5E8D4 {
+
+  interface "IBaseDownloader" as c_idl {
+    +Id : string
+    +FileSize : long
+    +TargetFile : string
+    +Type : string
+    +PrimaryUrl : string
+    +Lock : ReaderWriterLockSlim
+    --
+    +Start()
+    +Stop()
+    +Resume()
+    +SaveForLater()
+    +SetFileName()
+    --
+    <<events>>
+    +Probed
+    +Finished
+    +ProgressChanged
+    +AssembingProgressChanged
+    +Cancelled
+    +Failed
+  }
+
+  abstract class "HTTPDownloaderBase" as c_http {
+    #pieces : Dict<string, Piece>
+    #grabberDict : Dict<string, PieceGrabber>
+    #MAX_COUNT : int
+    #speedLimiter : SpeedLimiter
+    --
+    +PieceDownloadFinished()
+    +ContinueAdjacentPiece()
+    +UpdateDownloadedBytesCount()
+    #CreatePiece()
+    #SplitPiece()
+    #MergePieces()
+  }
+
+  abstract class "MultiSourceDownloaderBase" as c_multi {
+    #_chunks : List<Chunk>
+    #_chunkStreamMap : IChunkStreamMap
+    --
+    +Start()
+    +Stop()
+    +Resume()
+    #DownloadChunk()
+  }
+
+  class "Piece" as c_piece {
+    +Offset : long
+    +Length : long
+    +Downloaded : long
+    +State : SegmentState
+    +StreamType : StreamType
+  }
+
+  class "PieceGrabber" as c_grab {
+    -thread : Thread
+    --
+    +Download()
+    +Stop()
+    +Dispose()
+  }
+
+  class "SingleSourceHTTPDownloader" as c_single
+  class "DualSourceHTTPDownloader" as c_dual
+  class "MultiSourceHLSDownloader" as c_hls
+  class "MultiSourceDASHDownloader" as c_dash
+
+  c_idl <|.. c_http
+  c_idl <|.. c_multi
+  c_http <|-- c_single
+  c_http <|-- c_dual
+  c_multi <|-- c_hls
+  c_multi <|-- c_dash
+  c_http --> "*" c_piece : manages
+  c_http --> "*" c_grab : creates
+
+  note bottom of c_http
+    **Key differences from Java:**
+    • Piece (not Segment) terminology
+    • PieceGrabber runs on Thread per piece
+    • ReaderWriterLockSlim for thread safety
+    • Dual-source: audio+video in parallel
+    • State saved to binary file (BinaryWriter)
+    • Events (not listener interfaces)
+  end note
+}
+
+' ═══════════════════════════════════════════════════════════
+' KOTLIN DOWNLOAD ENGINE
+' ═══════════════════════════════════════════════════════════
+package "Kotlin — xdm.downloader" as kpkg #E1D5E7 {
+
+  class "Download" as k_dl {
+    -segments : List<Segment>
+    -scope : CoroutineScope
+    -_events : MutableSharedFlow<DownloadEvent>
+    -_progress : MutableStateFlow<ProgressInfo>
+    --
+    +start()
+    +stop()
+    +resume()
+    +events : SharedFlow<DownloadEvent>
+    +progress : StateFlow<ProgressInfo>
+    -downloadSegment(seg)
+    -splitLargestSegment()
+    -mergeAdjacentSegments()
+    -assembleFile()
+  }
+
+  class "DownloadManager" as k_mgr {
+    -activeDownloads : MutableMap (Mutex)
+    -downloadEntries : MutableMap (Mutex)
+    --
+    +startDownload()
+    +stopDownload()
+    +resumeDownload()
+    +cancelDownload()
+    +stopAll()
+    +events : SharedFlow<DownloadEvent>
+  }
+
+  interface "SegmentDownloader" as k_iseg {
+    +probe(url) : ProbeResult
+    +downloadSegment(url, range, sink)
+  }
+
+  class "HttpSegmentDownloader" as k_httpseg {
+    -client : HttpClient «Ktor»
+    --
+    +probe(url) : ProbeResult
+    +downloadSegment(url, range, sink)
+  }
+
+  class "Segment" as k_seg <<@Serializable>> {
+    +id : String
+    +startOffset : Long
+    +length : Long
+    +downloaded : Long
+    +state : SegmentState
+  }
+
+  sealed class "DownloadEvent" as k_evt {
+    Started
+    Probed(result)
+    Progress(info)
+    Finished(file)
+    Failed(error)
+    Cancelled
+    AssemblyProgress(%)
+  }
+
+  k_mgr --> "*" k_dl : manages
+  k_dl --> "*" k_seg : manages
+  k_dl --> k_iseg : uses
+  k_iseg <|.. k_httpseg
+  k_dl ..> k_evt : emits
+
+  note bottom of k_dl
+    **Key differences from Java/C#:**
+    • Coroutines (not threads)
+    • Mutex (not synchronized/lock)
+    • SharedFlow / StateFlow (not listeners/events)
+    • Segment is @Serializable data class
+    • JSON state persistence (not text/binary)
+    • expect/actual for platform I/O
+    • ~80% less code than Java version
+  end note
+}
+
+' ═══════════════════════════════════════════════════════════
+' PYTHON DOWNLOAD ENGINE
+' ═══════════════════════════════════════════════════════════
+package "Python — yt_dlp.downloader" as ppkg #FFE6CC {
+
+  abstract class "FileDownloader" as p_dl {
+    +ydl : YoutubeDL
+    +params : dict
+    --
+    +download(filename, info_dict)
+    +real_download(filename, info_dict)
+    +add_progress_hook(hook)
+    +report_progress(status)
+  }
+
+  class "HttpFD" as p_http
+  class "HlsFD" as p_hls
+  class "DashSegmentsFD" as p_dash
+  class "FragmentFD" as p_frag
+  class "ExternalFD" as p_ext
+  class "RtmpFD" as p_rtmp
+
+  p_dl <|-- p_http
+  p_dl <|-- p_frag
+  p_frag <|-- p_hls
+  p_frag <|-- p_dash
+  p_dl <|-- p_ext
+  p_dl <|-- p_rtmp
+
+  note bottom of p_dl
+    **Key differences from XDM engines:**
+    • Single-threaded (no segment splitting)
+    • Protocol selected by factory function
+    • get_suitable_downloader(info_dict)
+    • ExternalFD wraps curl/aria2/wget
+    • FragmentFD base for adaptive streams
+    • yt-dlp is a **tool** XDM calls;
+      XDM uses its own multi-segment engine
+  end note
+}
+
+' ═══════════════════════════════════════════════════════════
+' LEGEND
+' ═══════════════════════════════════════════════════════════
+legend bottom right
+  | Color | Implementation |
+  |<#DAE8FC>| Java (Swing) |
+  |<#D5E8D4>| C# (.NET) |
+  |<#E1D5E7>| Kotlin (KMP) |
+  |<#FFE6CC>| Python (yt-dlp) |
+endlegend
+
+@enduml

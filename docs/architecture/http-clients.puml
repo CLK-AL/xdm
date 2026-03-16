@@ -1,0 +1,277 @@
+@startuml http-clients
+!theme plain
+title HTTP / Networking Layer — Class Comparison
+caption How each implementation handles HTTP requests, proxies, and connections
+
+skinparam nodesep 30
+skinparam ranksep 25
+skinparam note {
+  BackgroundColor #FFFFF0
+  BorderColor #999999
+}
+
+' ═══════════════════════════════════════════════════════════
+' JAVA NETWORKING
+' ═══════════════════════════════════════════════════════════
+package "Java — xdman.network" #DAE8FC {
+
+  abstract class "HttpClient" as j_base {
+    +getResponse(url, headers) : Response
+    +createConnection()
+  }
+
+  class "XDMHttpClient" as j_raw {
+    -socket : Socket
+    -sslSocket : SSLSocket
+    --
+    +getResponse()
+    +createConnection()
+    -parseHeaders()
+    -handleChunked()
+    -handleRedirect()
+  }
+  note right of j_raw
+    **Raw socket implementation**
+    Custom HTTP/1.1 client built on
+    java.net.Socket with manual header
+    parsing, chunked transfer decoding,
+    and SSL/TLS wrapping.
+  end note
+
+  class "JavaHttpClient" as j_java {
+    -conn : HttpURLConnection
+    --
+    +getResponse()
+    +createConnection()
+  }
+  note right of j_java
+    Fallback client using
+    java.net.HttpURLConnection
+    for proxy/NTLM scenarios.
+  end note
+
+  class "KeepAliveConnectionCache" as j_pool {
+    -cache : Map<String, Socket>
+    --
+    +get(host, port) : Socket
+    +put(host, port, socket)
+    +evictStale()
+  }
+
+  class "SocketFactory" as j_sf {
+    +createSocket() : Socket
+    +wrapSSL(socket) : SSLSocket
+  }
+
+  class "HeaderCollection" as j_hdr {
+    +getHeader(name) : String
+    +setHeader(name, value)
+    +getAllHeaders() : List
+  }
+
+  class "ProxyResolver" as j_proxy {
+    +resolve(url) : WebProxy
+  }
+
+  j_base <|-- j_raw
+  j_base <|-- j_java
+  j_raw --> j_pool : reuses connections
+  j_raw --> j_sf : creates sockets
+  j_raw --> j_hdr
+  j_base --> j_proxy
+}
+
+' ═══════════════════════════════════════════════════════════
+' C# NETWORKING
+' ═══════════════════════════════════════════════════════════
+package "C# — XDM.Core.Clients.Http" #D5E8D4 {
+
+  interface "IHttpClient" as c_iface {
+    +Timeout : TimeSpan
+    +CreateGetRequest() : IHttpSession
+    +CreatePostRequest() : IHttpSession
+    +Send(request) : IHttpSession
+  }
+
+  class "DotNetHttpClient" as c_dotnet {
+    -client : System.Net.Http.HttpClient
+    --
+    +CreateGetRequest()
+    +Send(request)
+  }
+  note right of c_dotnet
+    **⚠ TLS validation disabled**
+    ServerCertificateCustomValidation
+    Callback = (a,b,c,d) => true
+    Vulnerable to MITM attacks.
+  end note
+
+  class "WinHttpClient" as c_win {
+    -hSession : SafeWinHttpHandle
+    --
+    +CreateGetRequest()
+    +Send(request)
+    -SetProxy()
+    -SetCredentials()
+  }
+  note right of c_win
+    **Windows-only P/Invoke**
+    Uses WinHTTP API directly.
+    Also ignores all SSL errors
+    (SECURITY_FLAG_IGNORE_*).
+  end note
+
+  class "NetFxHttpClient" as c_netfx {
+    -webRequest : HttpWebRequest
+  }
+
+  class "HttpClientFactory" as c_factory {
+    +Create() : IHttpClient
+  }
+  note right of c_factory
+    Returns WinHttpClient on Windows,
+    DotNetHttpClient elsewhere.
+  end note
+
+  class "ProxyHelper" as c_proxy {
+    +ConfigureProxy(session)
+  }
+
+  c_iface <|.. c_dotnet
+  c_iface <|.. c_win
+  c_iface <|.. c_netfx
+  c_factory ..> c_iface : creates
+  c_dotnet --> c_proxy
+  c_win --> c_proxy
+}
+
+' ═══════════════════════════════════════════════════════════
+' KOTLIN NETWORKING
+' ═══════════════════════════════════════════════════════════
+package "Kotlin — xdm.downloader.http" #E1D5E7 {
+
+  interface "SegmentDownloader" as k_iface {
+    +probe(url) : ProbeResult
+    +downloadSegment(url, range, sink)
+  }
+
+  class "HttpSegmentDownloader" as k_ktor {
+    -client : io.ktor.client.HttpClient
+    --
+    +probe(url) : ProbeResult
+    +downloadSegment(url, range, sink)
+    -applyHeaders()
+    -parseContentDisposition()
+  }
+  note right of k_ktor
+    **Ktor client (platform-native engines)**
+    CIO on JVM, Darwin on iOS/macOS,
+    Js on browser/Node.
+    Suspend functions throughout.
+    TLS validation: default (enabled).
+  end note
+
+  class "ProbeResult" as k_probe <<data class>> {
+    +totalSize : Long
+    +resumable : Boolean
+    +fileName : String?
+    +contentType : String?
+    +redirectedUrl : String?
+  }
+
+  k_iface <|.. k_ktor
+  k_ktor ..> k_probe : returns
+}
+
+' ═══════════════════════════════════════════════════════════
+' PYTHON NETWORKING
+' ═══════════════════════════════════════════════════════════
+package "Python — yt_dlp.networking" #FFE6CC {
+
+  class "RequestDirector" as p_dir {
+    -handlers : List[RequestHandler]
+    --
+    +send(request) : Response
+    -_get_handlers(request)
+  }
+  note right of p_dir
+    **Chain of Responsibility**
+    Tries handlers in preference
+    order until one succeeds.
+  end note
+
+  abstract class "RequestHandler" as p_rh {
+    +send(request) : Response
+    +can_handle(request) : bool
+  }
+
+  class "UrllibRH" as p_urllib
+  class "RequestsRH" as p_req
+  class "CurlCFFIRH" as p_curl {
+    +impersonate(browser)
+  }
+  note right of p_curl
+    Browser impersonation via
+    curl_cffi — mimics Chrome/
+    Firefox TLS fingerprint.
+  end note
+  class "WebsocketsRH" as p_ws
+
+  class "Request" as p_rq {
+    +url : str
+    +method : str
+    +headers : dict
+    +data : bytes
+  }
+
+  class "Response" as p_rs {
+    +status : int
+    +headers : dict
+    +read() : bytes
+  }
+
+  p_dir --> "*" p_rh : routes to
+  p_rh <|-- p_urllib
+  p_rh <|-- p_req
+  p_rh <|-- p_curl
+  p_rh <|-- p_ws
+  p_dir ..> p_rq
+  p_dir ..> p_rs
+}
+
+' ═══════════════════════════════════════════════════════════
+' COMPARISON NOTES
+' ═══════════════════════════════════════════════════════════
+note as N1
+  **Connection Pooling**
+  Java: KeepAliveConnectionCache (manual socket reuse)
+  C#: HttpClient built-in pooling + WinHTTP session pooling
+  Kotlin: Ktor engine manages pooling automatically
+  Python: urllib/requests handle pooling internally
+end note
+
+note as N2
+  **TLS Security**
+  Java: Default JVM validation ✓
+  C#: **DISABLED** (=> true) ✗ — Critical vulnerability
+  Kotlin: Ktor default validation ✓
+  Python: Default validation ✓ (curl_cffi configurable)
+end note
+
+note as N3
+  **Proxy Support**
+  Java: ProxyResolver (auto-detect, PAC, manual)
+  C#: ProxyHelper + WinInetProxyHelper + system proxy
+  Kotlin: Ktor engine proxy config
+  Python: Environment vars + handler-level config
+end note
+
+legend bottom right
+  | Color | Implementation |
+  |<#DAE8FC>| Java |
+  |<#D5E8D4>| C# (.NET) |
+  |<#E1D5E7>| Kotlin (KMP) |
+  |<#FFE6CC>| Python (yt-dlp) |
+endlegend
+
+@enduml

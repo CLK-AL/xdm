@@ -1,0 +1,252 @@
+@startuml ui-layer
+!theme plain
+title UI Framework Comparison — Java Swing vs C# WPF/GTK vs Kotlin Compose
+caption Python (yt-dlp) is CLI-only and omitted from this diagram
+
+skinparam nodesep 25
+skinparam ranksep 25
+skinparam note {
+  BackgroundColor #FFFFF0
+  BorderColor #999999
+}
+
+' ═══════════════════════════════════════════════════════════
+' JAVA SWING UI
+' ═══════════════════════════════════════════════════════════
+package "Java — xdman.ui" #DAE8FC {
+
+  class "XDMFrame" as j_frame {
+    «JFrame + ComponentListener»
+    -dpiScale : float
+    --
+    +setTheme()
+    +scaleToDPI()
+  }
+
+  class "MainWindow" as j_main {
+    «XDMFrame + ActionListener»
+    -downloadTable : JTable
+    -sidePanel : SidePanel
+    --
+    +showWindow()
+    +updateList()
+    +showPopup()
+  }
+
+  class "DownloadWindow" as j_dlwin
+  class "VideoDownloadWindow" as j_vdw
+  class "NewDownloadWindow" as j_ndw
+  class "VideoPopup" as j_vpop
+  class "SettingsPage" as j_set
+  class "BatchDownloadWnd" as j_batch
+  class "MediaConversionWnd" as j_conv
+  class "ComponentInstaller" as j_inst
+
+  package "Custom L&F (15 delegates)" as j_laf {
+    class "XDMLookAndFeel" as j_xlaf {
+      «MetalLookAndFeel»
+    }
+    class "XDMButtonUI" as j_btn
+    class "XDMScrollBarUI" as j_sb
+    class "XDMComboBoxUI" as j_cb
+    class "XDMProgressBarUI" as j_pb
+    class "..." as j_etc
+    j_xlaf --> j_btn
+    j_xlaf --> j_sb
+    j_xlaf --> j_cb
+    j_xlaf --> j_pb
+    j_xlaf --> j_etc
+  }
+
+  j_frame <|-- j_main
+  j_frame <|-- j_dlwin
+  j_main --> j_laf : applies theme
+
+  note bottom of j_main
+    **45 UI classes + 15 L&F delegates**
+    Single codebase for all platforms (via JVM).
+    Custom Metal L&F for consistent dark theme.
+    DPI scaling handled manually.
+    ~4,800 lines of UI code.
+  end note
+}
+
+' ═══════════════════════════════════════════════════════════
+' C# WPF + GTK UI
+' ═══════════════════════════════════════════════════════════
+package "C# — XDM UI (3 codebases)" #D5E8D4 {
+
+  package "XDM.Core.UI\n«Abstraction Layer»" as c_abs {
+    interface "IApplicationWindow" as c_iapp {
+      +Show()
+      +Hide()
+      +Close()
+      +AddNotification()
+    }
+    interface "INewDownloadDialog" as c_ind
+    interface "IProgressWindow" as c_ipw
+    interface "ISettingsPage" as c_isp
+    interface "IVideoDownloadView" as c_ivd
+    note bottom of c_abs
+      **20+ UI interfaces**
+      Abstract layer shared by
+      WPF and GTK implementations.
+      Controllers contain business logic.
+    end note
+  }
+
+  package "XDM.Wpf.UI\n«Windows only»" as c_wpf {
+    class "MainWindow" as c_wm {
+      «Window : IApplicationWindow»
+      -inProgressList
+      -finishedList
+    }
+    class "NewDownloadWindow" as c_wnd
+    class "DownloadProgressWindow" as c_wpw
+    class "SettingsWindow" as c_wsw
+    class "VideoDownloaderWindow" as c_wvd
+    class "... (50+ dialogs)" as c_wetc
+
+    c_iapp <|.. c_wm
+    c_ind <|.. c_wnd
+  }
+
+  package "XDM.Gtk.UI\n«Linux only»" as c_gtk {
+    class "MainWindow" as c_gm {
+      «Gtk.Window»
+    }
+    class "NewDownloadWindow" as c_gnd
+    class "DownloadProgressWindow" as c_gpw
+    class "SettingsDialog" as c_gsd
+    class "... (30+ dialogs)" as c_getc
+
+    c_iapp <|.. c_gm
+    c_ind <|.. c_gnd
+  }
+
+  note bottom of c_wpf
+    **WPF: 70+ XAML + code-behind files**
+    MVVM-lite (value converters, data binding).
+    Dark mode via SkinResourceDictionary.
+    System tray icon, floating widget.
+    ~5,200 lines of WPF UI code.
+  end note
+
+  note bottom of c_gtk
+    **GTK3: 40+ C# widget files**
+    Manual widget construction.
+    CSS-based theming (Adwaita).
+    ~3,000 lines of GTK UI code.
+  end note
+}
+
+' ═══════════════════════════════════════════════════════════
+' KOTLIN COMPOSE UI
+' ═══════════════════════════════════════════════════════════
+package "Kotlin — xdm.ui (Compose Multiplatform)" #E1D5E7 {
+
+  class "ComposeMain" as k_main {
+    «main() → application { Window }»
+    --
+    Compose Desktop entry point
+    Window(state = 900×600)
+  }
+
+  package "xdm.ui.screens" as k_screens {
+    class "MainScreen" as k_ms {
+      «@Composable»
+      --
+      TopToolbar()
+      SearchBar()
+      CategorySidebar()
+      DownloadListItem[]
+      StatusBar()
+    }
+    class "NewDownloadScreen" as k_nds {
+      «@Composable»
+    }
+    class "DownloadProgressScreen" as k_dps {
+      «@Composable»
+    }
+    class "SettingsScreen" as k_ss {
+      «@Composable»
+      --
+      BrowserMonitoringTab
+      GeneralTab
+      NetworkTab
+      CredentialsTab
+      AdvancedTab
+    }
+  }
+
+  package "xdm.ui.components" as k_comp {
+    class "DownloadListItem" as k_dli {
+      «@Composable»
+      --
+      name, status chip
+      progress bar, size
+      speed/ETA or date
+    }
+    class "CategorySidebar" as k_cs {
+      «@Composable»
+      --
+      CategoryItem[]
+    }
+  }
+
+  package "xdm.ui.theme" as k_theme {
+    class "XdmTheme" as k_th {
+      «@Composable»
+      --
+      Material3 dark/light
+      Primary: #4A9EFF / #1976D2
+      Surface: #2B2B3D / #FAFAFA
+    }
+  }
+
+  k_main --> k_ms
+  k_main --> k_nds
+  k_main --> k_dps
+  k_main --> k_ss
+  k_ms --> k_dli
+  k_ms --> k_cs
+  k_main --> k_th : wraps in theme
+
+  note bottom of k_screens
+    **Single codebase — all platforms**
+    ~1,500 lines total for entire UI.
+    Compose renders via Skia (own canvas).
+    State management: mutableStateOf().
+    Win + Linux + macOS + iOS + Android + WASM.
+    No platform-specific UI code needed.
+  end note
+}
+
+' ═══════════════════════════════════════════════════════════
+' CROSS-CUTTING COMPARISON
+' ═══════════════════════════════════════════════════════════
+note as COMP
+  **UI Lines of Code**
+  Java Swing: ~4,800 (1 codebase × 3 platforms via JVM)
+  C# WPF+GTK: ~8,200 (3 separate codebases)
+  Kotlin Compose: ~1,500 (1 codebase × 6 platforms via Skia)
+
+  **Control Mapping (key examples)**
+  | Java | C# WPF | C# GTK | Kotlin Compose |
+  | JFrame | Window | Gtk.Window | Window {} |
+  | JTable | ListView | TreeView | LazyColumn {} |
+  | JButton | Button | Gtk.Button | Button {} |
+  | JTextField | TextBox | Entry | OutlinedTextField {} |
+  | JProgressBar | ProgressBar | Gtk.ProgressBar | LinearProgressIndicator {} |
+  | JComboBox | ComboBox | Gtk.ComboBox | ExposedDropdownMenuBox {} |
+  | Metal L&F | ResourceDict | CSS | MaterialTheme {} |
+end note
+
+legend bottom right
+  | Color | Implementation |
+  |<#DAE8FC>| Java (Swing) |
+  |<#D5E8D4>| C# (WPF + GTK) |
+  |<#E1D5E7>| Kotlin (Compose) |
+endlegend
+
+@enduml

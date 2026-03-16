@@ -1,0 +1,320 @@
+@startuml config-state
+!theme plain
+title Configuration & State Persistence — Class Comparison
+caption How each implementation stores settings, download state, and credentials
+
+skinparam nodesep 25
+skinparam ranksep 25
+skinparam note {
+  BackgroundColor #FFFFF0
+  BorderColor #999999
+}
+
+' ═══════════════════════════════════════════════════════════
+' JAVA CONFIG & STATE
+' ═══════════════════════════════════════════════════════════
+package "Java — xdman" #DAE8FC {
+
+  class "Config" as j_cfg {
+    «Singleton»
+    -configPath : ~/.xdman/config.txt
+    --
+    +maxSegments : int = 8
+    +maxDownloads : int = 1
+    +downloadFolder : String
+    +proxy : WebProxy
+    +credentials : List
+    +blockedHosts : String[]
+    +monitorClipboard : boolean
+    --
+    +load()
+    +save()
+    +getInstance() : Config
+  }
+
+  class "QueueManager" as j_qm {
+    «Singleton»
+    -queuesPath : ~/.xdman/queues.txt
+    --
+    +queues : List<DownloadQueue>
+    --
+    +load()
+    +save()
+    +getInstance()
+  }
+
+  class "DownloadEntry" as j_de {
+    +id : String
+    +file : String
+    +folder : String
+    +state : int
+    +size : long
+    +downloaded : long
+    +date : long
+    +category : int
+  }
+
+  class "CredentialManager" as j_cm {
+    -credentials : List
+    --
+    +getCredential(host) : Credential
+    +addCredential(host, user, pass)
+  }
+
+  note bottom of j_cfg
+    **Java: Plain text files**
+    config.txt — key=value pairs
+    queues.txt — serialized queue data
+    state.txt — per-download segment state
+    settings.json — exported for browser ext
+
+    **⚠ Passwords stored in plaintext**
+    in config.txt alongside other settings.
+    No encryption at rest.
+  end note
+}
+
+' ═══════════════════════════════════════════════════════════
+' C# CONFIG & STATE
+' ═══════════════════════════════════════════════════════════
+package "C# — XDM.Core.IO" #D5E8D4 {
+
+  class "ConfigIO" as c_cio {
+    +{static} LoadConfig(file) : Config
+    +{static} SaveConfig(file, config)
+    --
+    Type constants:
+    INT, STRING, BOOL,
+    STRING_ARRAY, INT_ARRAY,
+    OBJECT_ARRAY, LONG, OBJECT
+  }
+
+  class "Config" as c_cfg {
+    «Singleton»
+    --
+    +MaxSegments : int
+    +MaxDownloads : int
+    +DownloadFolder : string
+    +Proxy : ProxyInfo
+    +UserCredentials : List<PasswordEntry>
+    +MonitorClipboard : bool
+    +AllowSystemDarkTheme : bool
+    --
+    +Load()
+    +Save()
+  }
+
+  class "DownloadStateStore" as c_dss {
+    +LoadSingleSourceHTTPDownloaderState()
+    +LoadDualSourceHTTPDownloaderState()
+    +LoadMultiSourceHLSDownloaderState()
+    +LoadMultiSourceDASHDownloaderState()
+    +SaveDownloaderState()
+  }
+
+  class "DownloadStateIO" as c_dsio {
+    +ReadState(reader) : State
+    +WriteState(writer, state)
+  }
+
+  class "TransactedIO" as c_tio {
+    +WriteStream(path, data) : bool
+    +ReadStream(path) : byte[]
+    --
+    Atomic write with temp file
+    + rename for crash safety
+  }
+  note right of c_tio
+    **⚠ WriteStream returns false on success**
+    Bug: returns false after first
+    successful write (line 179).
+  end note
+
+  class "AppDB" as c_db {
+    «Singleton — SQLite»
+    +Downloads : DownloadList
+    --
+    +Init(file)
+    +GetConnection()
+  }
+
+  class "DownloadList" as c_dlst {
+    +GetAll() : List
+    +Add(entry)
+    +Update(entry)
+    +Delete(id)
+  }
+
+  c_cio --> c_cfg : loads/saves
+  c_dss --> c_dsio : uses
+  c_dsio --> c_tio : atomic I/O
+  c_db --> c_dlst
+
+  note bottom of c_cio
+    **C#: Custom binary format**
+    settings.dat — BinaryWriter/Reader
+    *.state — per-download binary state
+    download.db — SQLite for download history
+
+    **⚠ Passwords stored in plaintext**
+    in binary settings.dat file.
+    Proxy passwords also in .state files.
+  end note
+}
+
+' ═══════════════════════════════════════════════════════════
+' KOTLIN CONFIG & STATE
+' ═══════════════════════════════════════════════════════════
+package "Kotlin — xdm.config" #E1D5E7 {
+
+  class "ConfigManager" as k_cm {
+    -configPath : Path
+    -config : AppConfig
+    --
+    +load() : AppConfig
+    +save()
+    +update(transform: (AppConfig) → AppConfig)
+    +current : AppConfig
+  }
+
+  class "AppConfig" as k_cfg <<@Serializable>> {
+    +maxSegments : Int = 8
+    +maxRetries : Int = 10
+    +maxConcurrentDownloads : Int = 5
+    +networkTimeoutSeconds : Int = 30
+    +downloadFolder : String
+    +tempFolder : String
+    +proxy : ProxyInfo?
+    +credentials : List<AuthCredential>
+    +fileExtensions : List<String>
+    +videoExtensions : List<String>
+    +blockedHosts : List<String>
+    +monitorClipboard : Boolean = true
+    +duplicateAction : DuplicateAction
+    +language : String = "en"
+  }
+
+  class "AuthCredential" as k_ac <<@Serializable>> {
+    +host : String
+    +userName : String
+    +password : String
+  }
+
+  class "DownloadEntry" as k_de <<@Serializable>> {
+    +id : String
+    +fileName : String
+    +downloadFolder : String
+    +state : DownloadState
+    +type : DownloadType
+    +totalSize : Long
+    +downloadedSize : Long
+    +dateAdded : Long
+    +category : FileCategory
+    +url : String
+    +auth : AuthCredential?
+    +proxy : ProxyInfo?
+  }
+
+  class "Segment" as k_seg <<@Serializable>> {
+    +id : String
+    +startOffset : Long
+    +length : Long
+    +downloaded : Long
+    +state : SegmentState
+  }
+
+  k_cm --> k_cfg : manages
+  k_cfg --> "*" k_ac
+  k_de --> "*" k_seg
+
+  note bottom of k_cm
+    **Kotlin: JSON (kotlinx.serialization)**
+    config.json — all settings + credentials
+    downloads.json — download entries
+    Segment state saved per-download as JSON
+
+    **Passwords still plaintext in JSON**
+    (noted as "should encrypt" in COMPARISON.md)
+
+    **Key advantages over Java/C#:**
+    • Human-readable format
+    • Schema-safe (@Serializable)
+    • Portable across platforms
+    • No custom parser needed
+    • update() is copy-on-write safe
+  end note
+}
+
+' ═══════════════════════════════════════════════════════════
+' PYTHON CONFIG
+' ═══════════════════════════════════════════════════════════
+package "Python — yt_dlp" #FFE6CC {
+
+  class "options.py" as p_opts {
+    +create_parser() : ArgumentParser
+    --
+    500+ CLI options parsed at startup
+    Config files: yt-dlp.conf, .netrc
+  }
+
+  class "YoutubeDL" as p_ydl {
+    +params : dict
+    --
+    Receives merged config from
+    CLI args + config files + env
+  }
+
+  class "cache.py" as p_cache {
+    +store(section, key, data)
+    +load(section, key) : data
+    --
+    ~/.cache/yt-dlp/
+    JSON files per section
+  }
+
+  class "cookies.py" as p_cookies {
+    +extract_cookies_from_browser(browser)
+    --
+    Reads cookies from Chrome, Firefox,
+    Safari, Edge, Opera, Brave, Vivaldi
+  }
+
+  p_opts --> p_ydl : configures
+  p_ydl --> p_cache : uses
+  p_ydl --> p_cookies : uses
+
+  note bottom of p_opts
+    **Python: CLI args + config files**
+    yt-dlp.conf — persistent options
+    .netrc — credentials (standard format)
+    ~/.cache/yt-dlp/ — JSON cache
+    --cookies-from-browser — reads browser DB
+    No GUI settings — all via CLI/config files.
+  end note
+}
+
+' ═══════════════════════════════════════════════════════════
+' COMPARISON TABLE
+' ═══════════════════════════════════════════════════════════
+note as COMP
+  **Persistence Format Comparison**
+  | Aspect | Java | C# | Kotlin | Python |
+  | Settings format | text (key=value) | binary (BinaryWriter) | JSON | CLI args + .conf |
+  | Download state | text (state.txt) | binary (.state) | JSON | download-archive |
+  | Download history | in-memory + text | SQLite (download.db) | JSON | text archive |
+  | Credentials | plaintext config | plaintext binary | plaintext JSON | .netrc (standard) |
+  | Crash safety | none | TransactedIO (atomic) | atomic write | N/A (stateless) |
+  | Human-readable | ✓ | ✗ | ✓ | ✓ |
+  | Schema-safe | ✗ | ✗ (type constants) | ✓ (@Serializable) | ✗ (dict) |
+  | Portability | ✓ | ✗ (binary format) | ✓ | ✓ |
+end note
+
+legend bottom right
+  | Color | Implementation |
+  |<#DAE8FC>| Java |
+  |<#D5E8D4>| C# (.NET) |
+  |<#E1D5E7>| Kotlin (KMP) |
+  |<#FFE6CC>| Python (yt-dlp) |
+endlegend
+
+@enduml

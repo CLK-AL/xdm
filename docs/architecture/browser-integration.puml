@@ -1,0 +1,265 @@
+@startuml browser-integration
+!theme plain
+title Browser Integration & IPC — Sequence and Class Comparison
+caption How browser extensions communicate with XDM across implementations
+
+skinparam nodesep 20
+skinparam ranksep 20
+skinparam note {
+  BackgroundColor #FFFFF0
+  BorderColor #999999
+}
+
+' ═══════════════════════════════════════════════════════════
+' SHARED BROWSER EXTENSION (all implementations use this)
+' ═══════════════════════════════════════════════════════════
+package "Browser Extension (Chrome/Firefox/Edge)" as ext #FFF2CC {
+  class "messaging.js" as ext_msg {
+    +sendWithNativeMessaging(data)
+    +sendViaHttp(data)
+    --
+    Native messaging preferred;
+    falls back to HTTP localhost
+  }
+  class "bg2.js / bg3.js" as ext_bg {
+    +onBeforeRequest(details)
+    +onHeadersReceived(details)
+    +sendImageToXDM(info)
+    +detectVideo(url, headers)
+  }
+  class "util.js" as ext_util {
+    +addToValueList()
+    +isVideoMimeType()
+    +isVideoUrl()
+  }
+
+  ext_bg --> ext_msg : sends captured data
+  ext_bg --> ext_util : uses
+
+  note bottom of ext_bg
+    **⚠ Known bugs (see CODE_REVIEW.md):**
+    • addToValueList overwrites (missing else)
+    • sendImageToXDM missing var (global leak)
+    • firefox-old/bg.js log() recursive overflow
+    • sendRecUrl off-by-one
+    • sendWithNativeMessaging data += coerces object
+    • Debug mode hardcoded true in production
+  end note
+}
+
+' ═══════════════════════════════════════════════════════════
+' JAVA IPC
+' ═══════════════════════════════════════════════════════════
+package "Java — xdman.monitoring" #DAE8FC {
+
+  class "BrowserMonitor" as j_mon {
+    «Runnable»
+    -serverSocket : ServerSocket
+    -port : 9614
+    --
+    +run()
+    -acceptConnection()
+    -syncSettingsJSON()
+  }
+
+  class "MonitoringSession" as j_sess {
+    «Runnable»
+    -socket : Socket
+    --
+    +run()
+    -parseRequest()
+    -processDownload()
+    -processVideo()
+  }
+
+  class "Request / Response" as j_rr {
+    +method : String
+    +path : String
+    +headers : Map
+    +body : String
+  }
+
+  together {
+    class "M3U8Handler" as j_m3u8
+    class "F4mHandler" as j_f4m
+    class "FBHandler" as j_fb
+    class "VimeoHandler" as j_vim
+    class "InstagramHandler" as j_ig
+  }
+
+  j_mon --> j_sess : spawns per connection
+  j_sess --> j_rr : parses
+  j_sess --> j_m3u8 : delegates
+  j_sess --> j_f4m
+  j_sess --> j_fb
+  j_sess --> j_vim
+  j_sess --> j_ig
+
+  note bottom of j_mon
+    **Java: ServerSocket on :9614**
+    One Thread per browser connection.
+    Parses HTTP requests manually.
+    Site-specific handlers for video detection.
+    Syncs config to ~/.xdman/settings.json
+    for browser extension to read.
+  end note
+}
+
+' ═══════════════════════════════════════════════════════════
+' C# IPC
+' ═══════════════════════════════════════════════════════════
+package "C# — XDM.Core.BrowserMonitoring" #D5E8D4 {
+
+  class "BrowserMonitor" as c_mon {
+    «static class»
+    +Run()
+    +Stop()
+  }
+
+  class "NativeMessagingHostHandler" as c_nmh {
+    -pipeName : "XDM_Ipc_Browser_Monitoring_Pipe"
+    --
+    +BroadcastConfig()
+    +SendToAllChannels()
+  }
+  note right of c_nmh
+    **⚠ Named pipe with no ACL**
+    Any local process can connect.
+    Hardcoded well-known pipe name.
+  end note
+
+  class "VideoTracker" as c_vt {
+    «IVideoTracker»
+    -ytVideoList
+    -hlsVideoList
+    -dashVideoList
+    --
+    +AddVideo()
+    +ClearVideoList()
+    <<events>>
+    +MediaAdded
+    +MediaUpdated
+  }
+
+  class "HttpServer" as c_srv {
+    -listener : TcpListener
+    --
+    +Start()
+    +Stop()
+    +ProcessRequest()
+    <<events>>
+    +RequestReceived
+  }
+
+  class "IpcHttpMessageProcessor" as c_proc {
+    +ProcessMessage(context)
+  }
+
+  class "PipeChannel" as c_pipe {
+    +Read() : Message
+    +Write(message)
+  }
+
+  class "NativeMessagingHostApp" as c_nma {
+    «separate process»
+    -stdin / stdout
+    --
+    +ReadMessage() : RawBrowserMessage
+    +WriteMessage(data)
+  }
+
+  c_mon --> c_srv : HTTP channel
+  c_mon --> c_nmh : pipe channel
+  c_srv --> c_proc : HTTP messages
+  c_nmh --> c_pipe : pipe messages
+  c_proc --> c_vt : detected videos
+  c_nma .right.> c_nmh : connects via pipe
+
+  note bottom of c_mon
+    **C#: Dual IPC channels**
+    1. HTTP server on localhost (like Java)
+    2. Named pipe + NativeMessagingHost process
+    Browser → NativeMessagingHost (stdin/stdout)
+    → Named pipe → XDM Core
+    One Thread per connection (HttpServer).
+  end note
+}
+
+' ═══════════════════════════════════════════════════════════
+' KOTLIN IPC
+' ═══════════════════════════════════════════════════════════
+package "Kotlin — xdm.monitoring" #E1D5E7 {
+
+  class "BrowserMonitor" as k_mon {
+    -server : embeddedServer «Ktor»
+    -port : 9614
+    -_events : MutableSharedFlow<BrowserEvent>
+    --
+    +start()
+    +stop()
+    +events : SharedFlow<BrowserEvent>
+    -processDownloadRequest()
+    -processVideoInfo()
+  }
+
+  class "BrowserRequest" as k_req <<@Serializable>> {
+    +url : String
+    +file : String?
+    +headers : Map
+    +cookies : String?
+    +tabUrl : String?
+    +userAgent : String?
+  }
+
+  class "VideoItem" as k_vid <<@Serializable>> {
+    +id : String
+    +text : String
+    +info : String
+  }
+
+  sealed class "BrowserEvent" as k_evt {
+    DownloadRequest(request)
+    VideoFound(video)
+    LinksReceived(links)
+  }
+
+  k_mon --> k_req : deserializes
+  k_mon --> k_vid : deserializes
+  k_mon ..> k_evt : emits via SharedFlow
+
+  note bottom of k_mon
+    **Kotlin: Ktor embedded server on :9614**
+    Coroutine-based (no thread per connection).
+    Validates localhost origin.
+    Emits BrowserEvent via SharedFlow
+    for reactive consumption.
+    ~200 lines (vs ~900 C#, ~400 Java).
+  end note
+}
+
+' ═══════════════════════════════════════════════════════════
+' SEQUENCE: Browser → XDM
+' ═══════════════════════════════════════════════════════════
+note as SEQ
+  **IPC Flow (all implementations):**
+  1. User clicks download or video detected
+  2. Extension bg.js captures URL + headers + cookies
+  3. Extension sends via native messaging (preferred) or HTTP POST
+  4. XDM receives on localhost:9614 (or named pipe on Windows/C#)
+  5. XDM parses request, identifies protocol (HTTP/HLS/DASH)
+  6. XDM creates appropriate downloader and starts download
+  7. XDM sends config back to extension (monitored file types, etc.)
+
+  **Port:** All implementations use :9614
+  **Protocol:** JSON over HTTP POST
+end note
+
+legend bottom right
+  | Color | Implementation |
+  |<#DAE8FC>| Java |
+  |<#D5E8D4>| C# (.NET) |
+  |<#E1D5E7>| Kotlin (KMP) |
+  |<#FFF2CC>| Browser Extension (shared) |
+endlegend
+
+@enduml

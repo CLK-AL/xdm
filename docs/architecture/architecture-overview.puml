@@ -1,0 +1,133 @@
+@startuml architecture-overview
+!theme plain
+title XDM Architecture Overview — Java vs C# vs Kotlin vs Python
+caption Compares the high-level module structure across all four implementations
+
+skinparam packageStyle rectangle
+skinparam nodesep 60
+skinparam ranksep 40
+skinparam note {
+  BackgroundColor #FFFFF0
+  BorderColor #999999
+}
+
+' ─── JAVA ─────────────────────────────────────────────────
+package "Java (src/java)" as java #DAE8FC {
+  [XDMApp\n«Main Controller»] as java_app
+  [Downloader\n«abstract»] as java_dl
+  [XDMHttpClient\n«raw sockets»] as java_http
+  [BrowserMonitor\n«:9614 server»] as java_mon
+  [FFmpeg\n«ProcessBuilder»] as java_ff
+  [Config\n«text files»] as java_cfg
+  [Swing UI\n«XDMFrame + LAF»] as java_ui
+}
+note right of java
+  **Language:** Java 11
+  **Entry:** Main.java → XDMApp
+  **Concurrency:** Thread + synchronized
+  **UI:** Custom Metal L&F (15 delegates)
+  **HTTP:** Raw socket + keep-alive pool
+  **Files:** ~194 classes, 23 packages
+  **Protocols:** HTTP, FTP, HLS, HDS, DASH
+end note
+
+' ─── C# ───────────────────────────────────────────────────
+package "C# (app/XDM)" as csharp #D5E8D4 {
+  [ApplicationCore\n«Main Controller»] as cs_app
+  [HTTPDownloaderBase\n«abstract»] as cs_dl
+  [DotNetHttpClient\nWinHttpClient] as cs_http
+  [HttpServer +\nNativeMessaging] as cs_mon
+  [FFmpegMediaProcessor\n«Process»] as cs_ff
+  [ConfigIO\n«binary files»] as cs_cfg
+  [WPF UI / GTK UI\n«3 codebases»] as cs_ui
+}
+note right of csharp
+  **Language:** C# 9 / .NET 6
+  **Entry:** App.xaml.cs (WPF) or Program.cs (GTK)
+  **Concurrency:** Thread + ReaderWriterLockSlim
+  **UI:** WPF (Windows) + GTK3 (Linux) + Xamarin (dead)
+  **HTTP:** .NET HttpClient + WinHTTP P/Invoke
+  **Files:** ~346 classes, 25+ namespaces
+  **Protocols:** HTTP (single+dual source), HLS, DASH
+end note
+
+' ─── KOTLIN ───────────────────────────────────────────────
+package "Kotlin KMP (src/kmp)" as kotlin #E1D5E7 {
+  [XdmApplication\n«Orchestrator»] as kt_app
+  [Download +\nDownloadManager] as kt_dl
+  [HttpSegmentDownloader\n«Ktor»] as kt_http
+  [BrowserMonitor\n«Ktor :9614»] as kt_mon
+  [FFmpegRunner\n«ProcessRunner»] as kt_ff
+  [ConfigManager\n«JSON»] as kt_cfg
+  [Compose UI\n«single codebase»] as kt_ui
+}
+note right of kotlin
+  **Language:** Kotlin 2.1
+  **Entry:** ComposeMain.kt or Main.kt (CLI)
+  **Concurrency:** Coroutines + Mutex + Flow
+  **UI:** Compose Multiplatform (Skia canvas)
+  **HTTP:** Ktor (platform-native engines)
+  **Files:** ~30 classes, expect/actual pattern
+  **Protocols:** HTTP, HLS, DASH (via core module)
+end note
+
+' ─── PYTHON ───────────────────────────────────────────────
+package "Python (src/py/yt-dlp)" as python #FFE6CC {
+  [YoutubeDL\n«Orchestrator»] as py_app
+  [FileDownloader\n«protocol-based»] as py_dl
+  [RequestDirector\n«urllib/requests/curl»] as py_http
+  [—\n«no browser IPC»] as py_mon
+  [FFmpegPostProcessor\n«subprocess»] as py_ff
+  [Options + Cache\n«JSON / args»] as py_cfg
+  [—\n«CLI only»] as py_ui
+}
+note right of python
+  **Language:** Python 3.8+
+  **Entry:** yt_dlp/__init__.py → main()
+  **Concurrency:** Single-threaded + subprocess
+  **UI:** CLI only (no GUI)
+  **HTTP:** urllib / requests / curl_cffi
+  **Files:** ~1050 extractors, plugin architecture
+  **Protocols:** HTTP, HLS, DASH, RTMP, F4M, ISM...
+end note
+
+' ─── RELATIONSHIPS ────────────────────────────────────────
+java_app --> java_dl
+java_app --> java_http
+java_app --> java_mon
+java_app --> java_ff
+java_app --> java_cfg
+java_app --> java_ui
+
+cs_app --> cs_dl
+cs_app --> cs_http
+cs_app --> cs_mon
+cs_app --> cs_ff
+cs_app --> cs_cfg
+cs_app --> cs_ui
+
+kt_app --> kt_dl
+kt_app --> kt_http
+kt_app --> kt_mon
+kt_app --> kt_ff
+kt_app --> kt_cfg
+kt_app --> kt_ui
+
+py_app --> py_dl
+py_app --> py_http
+py_app --> py_ff
+py_app --> py_cfg
+
+' ─── CROSS-REFERENCES ────────────────────────────────────
+note bottom of java
+  **XDM uses yt-dlp as a subprocess**
+  Java/C#/Kotlin call yt-dlp binary
+  to extract video URLs, then download
+  with their own engines.
+end note
+
+java_ff -[hidden]- cs_app
+cs_ff -[hidden]- kt_app
+kt_ff -[hidden]- py_app
+
+@enduml
