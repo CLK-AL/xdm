@@ -61,19 +61,16 @@ app/
 
 See [COMPARISON.md](COMPARISON.md) for a detailed side-by-side tech comparison across all implementations.
 
-## Redacted Files
+## Vendored Dependencies
 
-Some upstream dependency files contain hardcoded API keys that trigger GitHub push protection.
-These have been redacted locally. To restore them from upstream for local use:
+Some vendored files (e.g. yt-dlp extractors) contain API keys that trigger GitHub push protection.
+These are base64-encoded at rest so they can be committed safely while still working at runtime.
+
+To sync vendored files with upstream:
 
 ```bash
 ./restore-redacted.sh
 ```
-
-Currently restores:
-- `src/py/yt-dlp/yt_dlp/extractor/shahid.py` — AWS API keys for the Shahid.net extractor
-
-Do not commit restored files back — they are for local/runtime use only.
 
 ## Building from source
 
