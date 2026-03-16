@@ -6,7 +6,7 @@ about: Create a report to help us improve
 
 ### XDM is currently being re-written to be more user friendly and performant, please refer to (https://github.com/subhra74/xdm/discussions/768) for more information ###
 
-**PLEASE DO NOT JUST SAY "It does not work, or something not working etc." Provide enough relevent details so that the issue can be analyzed and reproduced easily**
+**PLEASE DO NOT JUST SAY "It does not work, or something not working etc." Provide enough relevant details so that the issue can be analyzed and reproduced easily**
 
 **Describe the bug**
 A clear and concise description of what the bug is.

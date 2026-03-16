@@ -15,7 +15,7 @@
 [News about new version](https://github.com/subhra74/xdm/discussions/768)
 
 **X**treme **D**ownload **M**anager (XDM) is a powerful tool to increase download speeds up to 500%, save videos from popular video streaming websites, resume broken/dead downloads, schedule and convert downloads.<br>
-XDM seamlessly integrates with Google Chrome, Mozilla Firefox Quantum, Opera, Vivaldi and other Chroumium and Firefox based browsers, to take over downloads and saving streaming videos from web. XDM has a built in video converter which lets you convert your downloaded videos to different formats so that you can watch them on your mobile or TV (100+ devices are supported)
+XDM seamlessly integrates with Google Chrome, Mozilla Firefox Quantum, Opera, Vivaldi and other Chromium and Firefox based browsers, to take over downloads and saving streaming videos from web. XDM has a built in video converter which lets you convert your downloaded videos to different formats so that you can watch them on your mobile or TV (100+ devices are supported)
 
 [![name](https://subhra74.github.io/xdm/download.png)](https://xtremedownloadmanager.com/#downloads)
 
@@ -64,7 +64,7 @@ See [COMPARISON.md](COMPARISON.md) for a detailed side-by-side tech comparison a
 ## Vendored Dependencies
 
 Some vendored files (e.g. yt-dlp extractors) contain API keys that trigger GitHub push protection.
-These are base64-encoded at rest so they can be committed safely while still working at runtime.
+These are obfuscated (reversed strings) so they can be committed safely while still working at runtime.
 
 To sync vendored files with upstream:
 
